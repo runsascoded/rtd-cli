@@ -50,9 +50,9 @@ for v in "${keep[@]}"; do
   keep_args+=(-e "$v")
 done
 
-rtd api "projects/$project/versions?limit=$limit&active=true&built=true"
+rtd api "projects/$project/versions?limit=$limit&active=true&built=true" \
 | jq -r '.results[] | select(.hidden | not) | .slug' \
-| grep "${keep_args[@]}" \
+| grep -v "${keep_args[@]}" \
 | xargs rtd hide -p $p
 ```
 
