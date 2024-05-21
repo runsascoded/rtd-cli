@@ -1,0 +1,22 @@
+name: Release to PyPI
+on:
+  push:
+    tags: [ "**" ]
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+      - name: Install
+        run: pip install -e .
+      - name: Release
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip install setuptools twine wheel
+          python setup.py sdist bdist_wheel
+          twine upload dist/*
