@@ -1,5 +1,7 @@
 # `rtd`: simple [Readthedocs] CLI
 
+[![rtd-cli](https://img.shields.io/pypi/v/rtd-cli?label=rtd-cli)](https://pypi.org/project/rtd-cli/)
+
 ## Install
 ```bash
 pip install rtd-cli
