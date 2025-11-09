@@ -1,4 +1,5 @@
 import json
+import subprocess
 from functools import partial
 from os import getenv
 from os.path import join, expanduser, exists
@@ -35,10 +36,11 @@ def cli():
 
 
 @cli.command("api")
-@click.option('-b', '--body', help='JSON string to send in the body of a PATCH request; if absent, a GET request is sent')
-@click.option('-u', '--show-updated', is_flag=True, help="After a PATCH request (with -b/--body), send a GET to the same endpoint, to verify the updated state of the resource")
+@click.option('-b', '--body', help='JSON string to send in the body of a PATCH/POST request; if absent, a GET request is sent')
+@click.option('-m', '--method', type=click.Choice(['GET', 'POST', 'PATCH'], case_sensitive=False), help='HTTP method to use; defaults to GET if no body, PATCH if body provided')
+@click.option('-u', '--show-updated', is_flag=True, help="After a PATCH/POST request (with -b/--body), send a GET to the same endpoint, to verify the updated state of the resource")
 @click.argument("endpoint")
-def api(body, show_updated, endpoint):
+def api(body, method, show_updated, endpoint):
     """Make a request to the Readthedocs REST API.
 
     RTD API docs: https://docs.readthedocs.io/en/stable/api/v3.html
@@ -46,15 +48,27 @@ def api(body, show_updated, endpoint):
     token = get_token()
     headers = { 'Authorization': f'token {token}' }
     url = join(URL_BASE, endpoint)
-    if body:
-        body_obj = json.loads(body)
-        response = requests.patch(url, body_obj, headers=headers)
+
+    # Determine method
+    if method:
+        method = method.upper()
+    elif body:
+        method = 'PATCH'
+    else:
+        method = 'GET'
+
+    if method in ['POST', 'PATCH']:
+        body_obj = json.loads(body) if body else {}
+        if method == 'POST':
+            response = requests.post(url, json=body_obj, headers=headers)
+        else:
+            response = requests.patch(url, json=body_obj, headers=headers)
         response.raise_for_status()
         if response.status_code != 204:
             text = response.text
             err(text)
 
-    if body and show_updated or not body:
+    if (method in ['POST', 'PATCH'] and show_updated) or method == 'GET':
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         body = response.json()
@@ -80,3 +94,41 @@ def patch_cmd(name, obj, docstr):
 
 patch_cmd("deactivate", {"active": False}, "Deactivate one or more versions")
 patch_cmd("hide", {"hidden": True}, "Hide one or more versions")
+
+
+@cli.command("build")
+@click.option('-v', '--version', default='latest', help='Version slug (default: latest)')
+@click.argument("project")
+def build(version, project):
+    """Trigger a build for a project version."""
+    endpoint = f"projects/{project}/versions/{version}/builds/"
+    api.callback(body=None, method='POST', show_updated=False, endpoint=endpoint)
+
+
+@cli.command("logs")
+@click.argument("build_id")
+def logs(build_id):
+    """Get build logs for a specific build ID."""
+    token = get_token()
+    headers = { 'Authorization': f'token {token}' }
+    url = f'https://readthedocs.org/api/v2/build/{build_id}.txt'
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    print(response.text, file=stdout)
+
+
+@cli.command("open")
+@click.option('-b', '--build', 'build_id', help='Open specific build page')
+@click.option('-d', '--docs', is_flag=True, help='Open docs site (not dashboard)')
+@click.argument("project")
+def open_cmd(build_id, docs, project):
+    """Open project page in browser."""
+    if build_id:
+        url = f'https://app.readthedocs.org/projects/{project}/builds/{build_id}/'
+    elif docs:
+        url = f'https://{project}.readthedocs.io/'
+    else:
+        url = f'https://app.readthedocs.org/projects/{project}/builds/'
+
+    err(f"Opening {url}")
+    subprocess.run(['open', url])
